@@ -677,6 +677,25 @@ const loginStudent = async (req, res) => {
   }
 };
 
+// Controller to fetch fee details by userId
+const getFeeDetailsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Find the student and populate the fees array
+    const student = await Student.findById(userId).populate('fees');
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    return res.status(200).json({ fees: student.fees });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
 export  {
     getStudents,
     getStudentById,
@@ -700,5 +719,6 @@ export  {
     getStudentTransport,
     loginStudent,
     getAdmitCard,
-    getStudentDetails
+    getStudentDetails,
+    getFeeDetailsByUserId
 };
