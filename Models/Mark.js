@@ -15,6 +15,12 @@ const marksSchema = new mongoose.Schema({
     },
     examDate: {
         type: Date,
+    },
+    examType: {
+        type: String,
+    },
+    examName: {
+        type: String,
     }
 });
 

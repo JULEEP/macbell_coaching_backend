@@ -10,6 +10,10 @@ const leaveSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',
   },
+  teacherId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Teacher',
+  },
   leaveType: {
     type: String,
   },

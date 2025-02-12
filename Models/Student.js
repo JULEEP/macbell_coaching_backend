@@ -6,6 +6,7 @@ const studentSchema = new mongoose.Schema({
   dob: { type: Date },
   address: { type: String },
   class: { type: String },
+  category: { type: String }, 
   parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Parent' },
   type: {
     type: String,
@@ -16,7 +17,7 @@ const studentSchema = new mongoose.Schema({
       status: { type: String, enum: ['Present', 'Absent', 'Late'], default: 'Present' }
     }
   ],
-  fees: [{
+fees: [{
     feesType: String,
     invoiceNumber: String,
     status: String,
@@ -26,7 +27,7 @@ const studentSchema = new mongoose.Schema({
     paidDate: Date,
     pendingPayment: Number,
   }],
-  role: { type: String, default: 'Student' },
+    role: { type: String, default: 'Student' },
   academicYear: {
     type: String
   },
@@ -286,6 +287,9 @@ marks: [
       examType: {
         type: String,
     },
+    examName: {
+      type: String,
+  },
   },
 ],
   students: [
@@ -294,28 +298,21 @@ marks: [
       ref: 'Student', // Assuming you already have a 'Student' model
     }
   ],
-  examSchedule: [
-    {
-        subject: {
-            type: String,
-        },
-        examDate: {
-            type: Date,
-        },
-        examTime: {
-            type: String,
-        },
-        examType: {
-            type: String,
-            enum: ['Mid-Term', 'Final', 'Quiz', 'Unit Test'], // You can add more types as per your requirements
-        },
-        isAdmitCardGenerated: {
-          type: Boolean,
-          default: false, // Default value to false
-        },
-        
+ examSchedule: [{
+    examDate: Date,
+    subject: String,
+    startTime: String,
+    endTime: String,
+    examTime: String,
+    examType: {
+      type: String,
+      enum: ['Mid-Term', 'Final', 'Quiz', 'Unit Test'],
     },
-],
+    isAdmitCardGenerated: {
+      type: Boolean,
+      default: false,
+    },
+  }],
 admitCard: {
   admitGenerated: { type: Boolean, default: false },
   issueDate: { type: Date },
@@ -333,9 +330,72 @@ transport: { type: mongoose.Schema.Types.ObjectId, ref: 'Transport' }, // Refere
     relationship: String,  // e.g. Father, Mother, Guardian
   }
 ],
+teachers: [
+  {
+    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+    name: { type: String, },
+    subject: { type: String, }
+  }
+],
+routine: [
+  {
+    class: { type: String, },
+    section: { type: String, },
+    routine: { type: Array, },
+    _id: { type: mongoose.Schema.Types.ObjectId, }
+  }
+],
+assignments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Assignment' }], // New Field
 complaints: [
   { type: mongoose.Schema.Types.ObjectId, ref: "Complaint" } // Reference to complaints against the student
 ],
+submissions: [
+  {
+    homeworkId: { type: mongoose.Schema.Types.ObjectId, ref: "Homework" },
+    status: { type: String, default: "Pending" },
+    submissionDate: Date,
+  },
+],
+homework: [
+  {
+    homeworkId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Homework',
+    },
+    homeworkTitle: {
+      type: String,
+    },
+    subject: {
+      type: String,
+    },
+    description: {
+      type: String,
+    },
+    marks: {
+      type: Number,
+    },
+    homeworkDate: {
+      type: Date,
+    },
+    submissionDate: {
+      type: Date,
+      default: null
+    },
+    status: {
+      type: String,
+      enum: ['Assigned', 'Submitted', 'Graded'],
+      default: 'Assigned'
+    },
+    feedback: {
+      type: String,
+      default: null
+    },
+    homeworkBy: {type: String},
+    // Any other fields you'd like to include (e.g., notes, attachments, etc.)
+  }
+],
+meetings: [{ type: mongoose.Schema.Types.ObjectId, ref: "Meeting" }]
+
 
 
 }, { timestamps: true });

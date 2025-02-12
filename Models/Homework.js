@@ -35,6 +35,14 @@ const homeworkSchema = new mongoose.Schema({
     description: { type: String },
     homeworkTitle: { type: String }, // Added homeworkTitle
     status: { type: String, enum: ['Not Submitted', 'Submitted'], default: 'Not Submitted' }, // Status of homework
+    homeworkBy: {type: String},
+    submissions: [
+      {
+        studentId: { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
+        status: { type: String, default: "Pending" },
+        submissionDate: Date,
+      },
+    ],
 }, { timestamps: true });
 
 const Homework = mongoose.model('Homework', homeworkSchema);

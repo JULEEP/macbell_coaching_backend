@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 
 const complaintSchema = new mongoose.Schema(
   {
+      studentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Student", // Referring to the Student model
+      },
     complaintBy: { type: String }, // Name of the complainer
     complaintType: { type: String }, // Type of the complaint
     complaintSource: { type: String }, // Source of complaint

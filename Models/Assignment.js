@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 const AssignmentSchema = new mongoose.Schema({
     assignmentTitle: { type: String, },
     subject: { type: String, },
-    availableFor: { type: String, enum: ['All', 'Admin', 'Student', 'Class'] },
     class: { type: String },
     section: { type: String },
     dueDate: { type: Date },
@@ -12,6 +11,14 @@ const AssignmentSchema = new mongoose.Schema({
     file: {
         type: String,  // Store file path or URL for the attached file
     },
+     // New Field: Student Submissions
+  submissions: [
+    {
+      studentId: { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
+      submittedDate: { type: Date, default: Date.now },
+      status: { type: String, enum: ["Pending", "Submitted"], default: "Pending" }
+    }
+  ],
 }, { timestamps: true });
 
 const Assignment = mongoose.model('Assignment', AssignmentSchema);

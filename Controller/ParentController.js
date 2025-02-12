@@ -7,6 +7,7 @@ import Assignment from '../Models/Assignment.js'
 import Notice from '../Models/Notice.js'
 import Routine from '../Models/Routine.js'
 import Leave from '../Models/Leave.js'
+import Marks from '../Models/Mark.js'
 import generateRefreshToken from '../config/refreshtoken.js';
 import generateToken from '../config/jwtToken.js';
 import asyncHandler from 'express-async-handler'
@@ -89,6 +90,27 @@ const parentLogin = async (req, res) => {
     res.status(500).json({ message: 'Error logging in', error: error.message });
   }
 };
+
+
+const parentLogout = async (req, res) => {
+  try {
+    // Clear the refresh token cookie
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Ensure the flag is set for production
+      sameSite: 'Strict',
+    });
+
+    // Optionally, you can clear the access token from client-side storage if it's stored there.
+    // This would typically be done on the client side, but if you need to handle it here, you can respond with a status.
+
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error.message);
+    res.status(500).json({ message: 'Error logging out', error: error.message });
+  }
+};
+
 
 
 
@@ -192,30 +214,229 @@ const getStudentLeaves = async (req, res) => {
     }
 };
 
-// Get student marks
 const getStudentMarks = async (req, res) => {
-    const { parentId, studentId } = req.params;
+  const { studentId } = req.params;
 
-    try {
-        // Verify parent and student relationship
-        const parent = await Parent.findById(parentId);
-        if (!parent || !parent.myStudents.includes(studentId)) {
-            return res.status(403).json({ message: 'Unauthorized access' });
-        }
+  try {
+    // Step 1: Fetch student marks and profile information based on studentId
+    const studentMarks = await Marks.find({ studentId }).populate(
+      "studentId",
+      "firstName lastName class roll section fatherName motherName"
+    );
 
-        const student = await Student.findById(studentId).select('marks');
-        if (!student) {
-            return res.status(404).json({ message: 'Student not found' });
-        }
-
-        res.status(200).json({
-            message: 'Marks details fetched successfully',
-            marks: student.marks,
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    if (!studentMarks || studentMarks.length === 0) {
+      return res.status(404).json({ message: "Marks not found for this student" });
     }
+
+    const student = studentMarks[0].studentId;
+    const studentClass = student.class;
+    const studentSection = student.section;
+
+    // Step 2: Retrieve all marks for the same class and section
+    const allMarks = await Marks.find().populate(
+      "studentId",
+      "firstName lastName class roll section fatherName motherName"
+    );
+
+    const filteredMarks = allMarks.filter(
+      (mark) =>
+        mark.studentId?.class === studentClass && mark.studentId?.section === studentSection
+    );
+
+    if (!filteredMarks || filteredMarks.length === 0) {
+      return res.status(404).json({ message: "No marks found for this class and section" });
+    }
+
+    // Step 3: Prepare subject-wise comparison data
+    const subjectComparison = {};
+    filteredMarks.forEach((mark) => {
+      if (!subjectComparison[mark.subject]) {
+        subjectComparison[mark.subject] = [];
+      }
+      subjectComparison[mark.subject].push({
+        studentId: mark.studentId._id.toString(),
+        student: mark.studentId,
+        marksObtained: mark.marksObtained,
+        totalMarks: mark.totalMarks,
+      });
+    });
+
+    const subjectResults = [];
+    let studentTotalObtainedMarks = 0;
+    let studentTotalMarks = 0;
+
+    for (const subject in subjectComparison) {
+      const subjectMarks = subjectComparison[subject];
+
+      // Find the topper for the subject
+      let subjectTopper = null;
+      subjectMarks.forEach((entry) => {
+        if (!subjectTopper || entry.marksObtained > subjectTopper.marksObtained) {
+          subjectTopper = entry;
+        }
+      });
+
+      // Get the student's marks for the subject
+      const studentSubjectMarks = subjectMarks.find(
+        (entry) => entry.studentId === student._id.toString()
+      );
+
+      if (studentSubjectMarks) {
+        studentTotalObtainedMarks += studentSubjectMarks.marksObtained;
+        studentTotalMarks += studentSubjectMarks.totalMarks;
+
+        const studentPercentage = (
+          (studentSubjectMarks.marksObtained / studentSubjectMarks.totalMarks) *
+          100
+        ).toFixed(2);
+        const topperPercentage = (
+          (subjectTopper.marksObtained / subjectTopper.totalMarks) *
+          100
+        ).toFixed(2);
+
+        subjectResults.push({
+          subject,
+          studentMarks: studentSubjectMarks.marksObtained,
+          studentPercentage,
+          topperMarks: subjectTopper.marksObtained,
+          topperPercentage,
+          comparison:
+            studentPercentage >= topperPercentage
+              ? "Your child is above or equal to the topper in this subject"
+              : "Your child is below the topper in this subject",
+        });
+      }
+    }
+
+    // Step 4: Calculate overall comparison
+    const studentPercentage = (
+      (studentTotalObtainedMarks / studentTotalMarks) *
+      100
+    ).toFixed(2);
+
+    const topperOverallMarks = subjectResults.reduce(
+      (acc, subject) => acc + subject.topperMarks,
+      0
+    );
+    const topperTotalMarks = subjectResults.reduce(
+      (acc, subject) => acc + subject.topperMarks * (100 / subject.topperPercentage),
+      0
+    );
+    const topperOverallPercentage = ((topperOverallMarks / topperTotalMarks) * 100).toFixed(2);
+
+    const comparisonResult = {
+      student,
+      studentPercentage,
+      topper: subjectResults[0]?.topper,
+      topperPercentage: topperOverallPercentage,
+      overallComparison:
+        studentPercentage >= topperOverallPercentage
+          ? "Your children are above or equal to the topper overall"
+          : "Your children are below the topper overall",
+      subjectWiseComparison: subjectResults,
+      suggestion:
+        studentPercentage >= topperOverallPercentage
+          ? "Encourage your child to maintain their excellent performance by engaging in advanced learning resources and extracurricular activities."
+          : "Support your child by identifying areas for improvement. Regular study schedules, engaging a tutor, or providing additional resources could help them achieve better results.",
+    };
+
+    res.status(200).json({
+      message: "Subject-wise comparison with topper retrieved successfully",
+      comparisonResult,
+    });
+  } catch (error) {
+    console.error("Error comparing topper:", error);
+    res.status(500).json({ message: "Failed to compare with topper" });
+  }
 };
+
+
+const getStudentMark = async (req, res) => {
+  const { studentId } = req.params;
+
+  try {
+    // Step 1: Fetch student marks and profile information based on studentId
+    const studentMarks = await Marks.find({ studentId }).populate(
+      "studentId",
+      "firstName lastName class roll section fatherName motherName"
+    );
+
+    if (!studentMarks || studentMarks.length === 0) {
+      return res.status(404).json({ message: "Marks not found for this student" });
+    }
+
+    const student = studentMarks[0].studentId;
+    const studentClass = student.class;
+    const studentSection = student.section;
+
+    // Step 2: Retrieve all marks for the same class and section
+    const allMarks = await Marks.find().populate(
+      "studentId",
+      "firstName lastName class roll section fatherName motherName"
+    );
+
+    const filteredMarks = allMarks.filter(
+      (mark) =>
+        mark.studentId?.class === studentClass && mark.studentId?.section === studentSection
+    );
+
+    if (!filteredMarks || filteredMarks.length === 0) {
+      return res.status(404).json({ message: "No marks found for this class and section" });
+    }
+
+    // Step 3: Prepare subject-wise comparison data
+    const subjectComparison = {};
+    filteredMarks.forEach((mark) => {
+      if (!subjectComparison[mark.subject]) {
+        subjectComparison[mark.subject] = [];
+      }
+      subjectComparison[mark.subject].push({
+        studentId: mark.studentId._id.toString(),
+        student: mark.studentId,
+        marksObtained: mark.marksObtained,
+        totalMarks: mark.totalMarks,
+      });
+    });
+
+    const subjectResults = [];
+
+    for (const subject in subjectComparison) {
+      const subjectMarks = subjectComparison[subject];
+
+      // Find the topper for the subject
+      let subjectTopper = null;
+      subjectMarks.forEach((entry) => {
+        if (!subjectTopper || entry.marksObtained > subjectTopper.marksObtained) {
+          subjectTopper = entry;
+        }
+      });
+
+      // Get the student's marks for the subject
+      const studentSubjectMarks = subjectMarks.find(
+        (entry) => entry.studentId === student._id.toString()
+      );
+
+      if (studentSubjectMarks) {
+        subjectResults.push({
+          subject,
+          studentMarks: studentSubjectMarks.marksObtained,
+          topperMarks: subjectTopper.marksObtained,
+          topperId: subjectTopper.studentId, // Adding topper's ID
+        });
+      }
+    }
+
+    res.status(200).json({
+      message: "Subject-wise marks comparison retrieved successfully",
+      comparisonResult: subjectResults,
+    });
+  } catch (error) {
+    console.error("Error comparing subject-wise marks:", error);
+    res.status(500).json({ message: "Failed to compare subject-wise marks" });
+  }
+};
+
+
 
 // Get student exam schedule
 const getStudentExamSchedule = async (req, res) => {
@@ -679,6 +900,7 @@ const getStudentDetails = async (req, res) => {
   
 export {
     parentLogin,
+    parentLogout,
     getStudentTransport,
     getStudentAttendance,
     getStudentLeaves,
@@ -695,5 +917,6 @@ export {
     getSubjectsAndTeachersForParent,
     getClassRoutineForParent,
     applyLeave,
-    getStudentDetails
+    getStudentDetails,
+    getStudentMark
 }

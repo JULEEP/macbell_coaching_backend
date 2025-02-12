@@ -1,39 +1,23 @@
 import mongoose from 'mongoose';
 
 const examScheduleSchema = new mongoose.Schema({
-  examTitle: {
-    type: String,
-  },
-  class: {
-    type: String,
-  },
-  section: {
-    type: String,
-  },
-  subject: {
-    type: String,
-  },
-  examDate: {
-    type: Date,
-  },
-  startTime: {
-    type: String,
-  },
-  endTime: {
-    type: String,
-  },
-  examCenter: {
-    type: String,
-  },
+  examTitle: String,
+  class: String,
+  section: String,
+  subject: String,
+  examDate: Date,
+  startTime: String,
+  endTime: String,
+  examTime: String,
   examType: {
     type: String,
-    enum: ['Mid-Term', 'Final', 'Quiz', 'Unit Test'], // Enum for different exam types
-},
-isAdmitCardGenerated: {
-  type: Boolean,
-  default: false // Default value is false
-}
-
+    enum: ['Mid-Term', 'Final', 'Quiz', 'Unit Test'], // You can add more types as per your requirements
+  },
+  examCenter: String,
+  isAdmitCardGenerated: {
+    type: Boolean,
+    default: false, // Default value to false
+  },
 }, { timestamps: true });
 
 const Exam = mongoose.model('ExamSchedule', examScheduleSchema);

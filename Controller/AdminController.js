@@ -4,11 +4,14 @@ import Student from '../Models/Student.js';
 import Teacher from '../Models/Teacher.js';
 import Attendance from '../Models/Attendance.js';
 import Class from '../Models/Classroom.js';
+import ClassModel from '../Models/ClassModel.js';
 import Notice from '../Models/Notice.js';
 import Subject from '../Models/Subject.js';
+import Leave from '../Models/Leave.js';
 import PhoneCallModel from '../Models/PhoneCall.js';
 import ComplaintModel from '../Models/Complaint.js';
 import CertificateModel from '../Models/Certificate.js';
+import Meeting from '../Models/Meeting.js';
 import cloudinary from '../config/cloudinary.js';
 import SectionModel from '../Models/Section.js';
 import Content from '../Models/Content.js';
@@ -23,12 +26,14 @@ import Routine from '../Models/Routine.js';
 import Transport from '../Models/Transport.js';
 import Vehicle from '../Models/Vehicle.js';
 import ExamType from '../Models/ExamType.js';
+import Holiday from '../Models/Holiday.js';
 import Exam from '../Models/ExamShedule.js';
 import Topic from '../Models/Topic.js';
 import Fee from '../Models/Fee.js';
 import SeatPlan from '../Models/SeatPlan.js';
 import Marks from '../Models/Mark.js';
 import Staff from '../Models/Staff.js';
+import Parent from '../Models/Parent.js'
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import generateRefreshToken from '../config/refreshtoken.js';
@@ -564,34 +569,49 @@ const updateSection = async (req, res) => {
 };
 
 
-// POST Controller to assign a class teacher
 const assignClassTeacher = async (req, res) => {
   try {
-    const { class: className, section, teacher } = req.body;
+    const { class: className, section, name, subject } = req.body;
 
-    // Create a new class teacher assignment
-    const newAssignment = new Teacher({ class: className, section, teacher });
+    // Check if teacher already exists using name, class, and section
+    let teacher = await Teacher.findOne({ name, class: className, section });
 
-    // Save the new assignment to the database
-    await newAssignment.save();
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found. Please add the teacher first." });
+    }
 
-    res.status(201).json({ message: 'Class teacher assigned successfully.', data: newAssignment });
+    // Create teacher object with ID, name, and subject to push into students' teachers array
+    const teacherData = {
+      teacherId: teacher._id,
+      name: teacher.name,
+      subject
+    };
+
+    // Directly push the teacher object into the teachers array for all students in the class and section
+    await Student.updateMany(
+      { class: className, section },
+      { $push: { teachers: teacherData } } // Directly push teacher data into students' teachers array
+    );
+
+    res.status(201).json({ message: "Class teacher assigned successfully and updated for students.", data: teacher });
   } catch (error) {
-    res.status(500).json({ message: 'Error assigning class teacher.', error: error.message });
+    res.status(500).json({ message: "Error assigning class teacher.", error: error.message });
   }
 };
+
 
 
 
 // GET Controller to retrieve all class teacher assignments
 const getClassTeachers = async (req, res) => {
   try {
-    // Fetch all teacher assignments from the Teacher model
-    const assignments = await Teacher.find();
+    // Fetch only the required fields: class, section, teacher (name), and subject
+    const assignments = await Teacher.find().select('class section name subject');
 
-    res.status(200).json({ message: 'Class teacher assignments retrieved successfully.', data: assignments });
+    // Return the filtered assignments with the class, section, teacher, and subject fields
+    res.status(200).json({ message: 'Class teacher assignments fetched successfully.', assignments });
   } catch (error) {
-    res.status(500).json({ message: 'Error retrieving class teacher assignments.', error: error.message });
+    res.status(500).json({ message: 'Error fetching class teacher assignments.', error: error.message });
   }
 };
 
@@ -693,7 +713,7 @@ const addClass = async (req, res) => {
     const sectionIds = foundSections.map(section => section._id);
 
     // Create a new class entry
-    const newClass = new Class({
+    const newClass = new ClassModel({
       className,
       sections: sectionIds, // Save array of section IDs
     });
@@ -709,8 +729,7 @@ const addClass = async (req, res) => {
 const getClasses = async (req, res) => {
   try {
     // Find classes and populate the 'sections' field with actual section data
-    const classes = await Class.find()
-      .populate('sections', 'name'); // Populate 'sections' with 'name' from Section
+    const classes = await ClassModel.find()
 
     if (!classes || classes.length === 0) {
       return res.status(404).json({ message: 'No classes found.' });
@@ -1013,6 +1032,7 @@ const addStudent = async (req, res) => {
     schoolContact,
     additionalInfo,
     customField1,
+    category, // Include category field here
   } = req.body;
 
   try {
@@ -1032,6 +1052,7 @@ const addStudent = async (req, res) => {
       firstName,
       lastName,
       gender,
+      category,
       dateOfBirth,
       religion,
       caste,
@@ -1101,11 +1122,11 @@ const addStudent = async (req, res) => {
 
 
 
-// Controller function to get selected fields of students
 const getStudentsAdmission = async (req, res) => {
   try {
-    // Fetch students with selected fields only
-    const students = await Student.find();
+    // Fetch students with selected fields only, sorted by creation date (newest first)
+    const students = await Student.find()
+      .sort({ createdAt: -1 })  // Sort by createdAt in descending order (newest first)
 
     // Return success response with the list of students
     res.status(200).json({ message: 'Students fetched successfully', students });
@@ -1115,36 +1136,41 @@ const getStudentsAdmission = async (req, res) => {
   }
 };
 
-const getStudentByFilter = async (req, res) => {
+const getStudentDetails = async (req, res) => {
   try {
-    // Destructure 'class' (from query params) and 'section' (from query params)
-    const { class: className, section } = req.query;
+    const { studentId } = req.params;
 
-    // Check if the className and section are valid and sanitize input (optional)
-    const query = {};
-    if (className) query.class = className.trim();  // Use .trim() to remove any extra spaces
-    if (section) query.section = section.trim();  // Use .trim() to remove any extra spaces
+    // Fetch the student details by ID
+    const student = await Student.findById(studentId);
 
-    // Fetch students based on class and section filter
-    const students = await Student.find(query).select('firstName lastName roll gender class section');
-
-    // Modify each student to include fullName by concatenating firstName and lastName
-    const modifiedStudents = students.map(student => ({
-      ...student.toObject(),
-      fullName: `${student.firstName} ${student.lastName}`,
-    }));
-
-    // Return success response with the list of students
-    if (modifiedStudents.length > 0) {
-      res.status(200).json({ message: 'Students fetched successfully', students: modifiedStudents });
-    } else {
-      res.status(404).json({ message: 'No students found for the given class and section.' });
+    // Check if the student exists
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
     }
+
+    // Return success response with student details
+    res.status(200).json({ message: 'Student details fetched successfully', student });
   } catch (error) {
     // Handle errors during the fetch operation
-    res.status(500).json({ message: 'Error fetching students', error: error.message });
+    res.status(500).json({ message: 'Error fetching student details', error: error.message });
   }
 };
+
+
+
+// POST: Add a new holiday
+const addHoliday = async (req, res) => {
+  const { fromDate, toDate, holidayName, holidayMessage } = req.body;
+
+  try {
+    const newHoliday = new Holiday({ fromDate, toDate, holidayName, holidayMessage });
+    await newHoliday.save();
+    res.status(201).json({ message: 'Holiday added successfully!', holiday: newHoliday });
+  } catch (error) {
+    res.status(500).json({ message: 'Error adding holiday', error: error.message });
+  }
+};
+
 
 
 
@@ -1443,29 +1469,20 @@ export const getInvoices = async (req, res) => {
   }
 };
 
-// Controller function to add a transport route
 const addTransportRoute = async (req, res) => {
-  const { routeTitle, fare } = req.body;
-
-  // Check if all required fields are provided
-  if (!routeTitle || !fare) {
-    return res.status(400).json({ message: 'Route title and fare are required' });
-  }
+  const { routeTitle, driver, stops, date } = req.body;
 
   try {
-    // Create a new transport route entry
     const newRoute = new Transport({
-      routeTitle: routeTitle,
-      fare: fare
+      routeTitle,
+      driver,
+      stops,
+      date
     });
 
-    // Save the route to the database
     await newRoute.save();
-
-    // Return success response
     res.status(201).json({ message: 'Transport route added successfully', route: newRoute });
   } catch (error) {
-    // Handle errors during save
     res.status(500).json({ message: 'Error adding transport route', error: error.message });
   }
 };
@@ -1612,35 +1629,108 @@ const getExamTypes = async (req, res) => {
 
 
 const addExamSchedule = async (req, res) => {
-  const { examTitle, class: examClass, section, subject, examDate, startTime, endTime, examType, examCenter } = req.body;
+  const {
+    examTitle,
+    class: examClass,
+    section,
+    examCenter,
+    examDays, // Array of exam days with multiple exams (e.g. before and after lunch)
+    examType, // The exam type (e.g., 'Mid-Term', 'Final')
+  } = req.body;
 
   try {
-    // Create a new exam schedule entry with isAdmitCardGenerated set to false by default
-    const newExamSchedule = new Exam({
-      examTitle,
+    if (!examDays || examDays.length === 0) {
+      return res.status(400).json({
+        message: 'No exam days provided',
+      });
+    }
+
+    const examSchedules = [];
+
+    // Loop through each day in the examDays array
+    for (let day of examDays) {
+      const { date, exams } = day; // Each day has a date and an array of exams (before and after lunch)
+
+      if (!exams || exams.length === 0) {
+        return res.status(400).json({
+          message: `No exams provided for the day ${date}`,
+        });
+      }
+
+      // Loop through each exam for the day
+      for (let exam of exams) {
+        const { subject, startTime, endTime, examTime } = exam;
+
+        const examSchedule = new Exam({
+          examTitle,
+          class: examClass,
+          section,
+          subject,
+          examDate: new Date(date), // Set the exam date for each specific exam
+          startTime,
+          endTime,
+          examTime,
+          examType, // Using the examType passed in the body
+          examCenter,
+          isAdmitCardGenerated: false, // Default value for isAdmitCardGenerated
+        });
+
+        // Save the exam schedule to the database
+        await examSchedule.save();
+
+        // Add the saved exam schedule to the list
+        examSchedules.push(examSchedule);
+      }
+    }
+
+    // Now, update all students of the specified class and section
+    const students = await Student.find({
       class: examClass,
-      section,
-      subject,
-      examDate,
-      startTime,
-      endTime,
-      examType,
-      examCenter,
-      isAdmitCardGenerated: false // Default value for isAdmitCardGenerated
+      section: section,
     });
 
-    // Save the new exam schedule to the database
-    await newExamSchedule.save();
+    // Create an array of exam schedules to push to students
+    const examScheduleData = examSchedules.map((schedule) => ({
+      examDate: schedule.examDate,
+      subject: schedule.subject,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      examTime: schedule.examTime,
+      examType: schedule.examType,
+      isAdmitCardGenerated: schedule.isAdmitCardGenerated,
+    }));
+
+    // Push the exam schedule data to each student
+    for (let student of students) {
+      student.examSchedule = [...student.examSchedule, ...examScheduleData];
+      await student.save();
+    }
 
     // Return success response
     res.status(201).json({
-      message: 'Exam schedule added successfully',
-      examSchedule: newExamSchedule
+      message: 'Exam schedules added and updated for students successfully',
+      examSchedules: examSchedules.map(schedule => ({
+        examTitle,
+        class: examClass,
+        section,
+        examCenter,
+        examType,
+        exams: examSchedules
+          .filter(s => s.examDate.toISOString().split('T')[0] === schedule.examDate.toISOString().split('T')[0])
+          .map(s => ({
+            examDate: s.examDate,
+            subject: s.subject,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            examTime: s.examTime,
+            isAdmitCardGenerated: s.isAdmitCardGenerated,
+          })),
+      })),
     });
   } catch (error) {
     res.status(500).json({
-      message: 'Error adding exam schedule',
-      error: error.message
+      message: 'Error adding exam schedules and updating students',
+      error: error.message,
     });
   }
 };
@@ -1649,18 +1739,56 @@ const addExamSchedule = async (req, res) => {
 // Controller function to get all exam schedules
 const getExamSchedule = async (req, res) => {
   try {
-    // Fetch all exam schedules from the database
-    const examSchedules = await Exam.find();
+    const { class: classParam, section } = req.query;
 
-    if (examSchedules.length === 0) {
-      return res.status(404).json({ message: 'No exam schedules found' });
-    }
+    // Log incoming query parameters
+    console.log('Query Parameters:', { class: classParam, section });
 
-    // Return the list of exam schedules
-    res.status(200).json({ message: 'Exam schedules fetched successfully', examSchedules });
+    // Fetch all exam schedules for a specific class and section
+    const examSchedules = await Exam.aggregate([
+      { $match: { class: classParam, section: section } }, // Filter by class and section
+      {
+        $group: {
+          _id: { class: "$class", section: "$section", examTitle: "$examTitle", examCenter: "$examCenter", examType: "$examType" },
+          exams: {
+            $push: {
+              examDate: "$examDate",
+              subject: "$subject",
+              startTime: "$startTime",
+              endTime: "$endTime",
+              examTime: "$examTime",
+              isAdmitCardGenerated: "$isAdmitCardGenerated"
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1, // Include _id in the result
+          examTitle: "$_id.examTitle",
+          class: "$_id.class",
+          section: "$_id.section",
+          examCenter: "$_id.examCenter",
+          examType: "$_id.examType",
+          exams: 1
+        }
+      }
+    ]);
+
+    // Log the result from the database query
+    console.log('Exam Schedules:', examSchedules);
+
+    // Return the exam schedules in the desired format
+    res.status(200).json({
+      message: 'Exam schedules fetched successfully',
+      examSchedules: examSchedules
+    });
   } catch (error) {
-    // Handle errors during the fetch operation
-    res.status(500).json({ message: 'Error fetching exam schedules', error: error.message });
+    console.error('Error fetching exam schedules:', error.message);
+    res.status(500).json({
+      message: 'Error fetching exam schedules',
+      error: error.message
+    });
   }
 };
 
@@ -2024,7 +2152,6 @@ const getAllHomework = async (req, res) => {
 };
 
 
-// Create or update a class routine
 const createOrUpdateClassRoutine = async (req, res) => {
   const { class: className, section, routine } = req.body;
 
@@ -2035,11 +2162,28 @@ const createOrUpdateClassRoutine = async (req, res) => {
     // Save the routine to the database
     await newRoutine.save();
 
-    // Return the created routine in the required response format
+    // Fetch all students in the specific class and section
+    const students = await Student.find({ class: className, section: section });
+
+    // For each student, push the new routine data into the routine[] array
+    const routineData = {
+      class: newRoutine.class,
+      section: newRoutine.section,
+      routine: newRoutine.routine,
+      _id: newRoutine._id, // Adding routine ID to the pushed data
+    };
+
+    for (const student of students) {
+      student.routine.push(routineData); // Push the entire routine data, not just the ID
+      await student.save(); // Save the student with the updated routine array
+    }
+
+    // Return the created routine data in the required response format
     return res.status(201).json([{
       class: newRoutine.class,
       section: newRoutine.section,
       routine: newRoutine.routine,
+      _id: newRoutine._id, // Include the ID in the response as well
     }]);
   } catch (error) {
     console.error("Error creating or updating class routine:", error);
@@ -2054,16 +2198,21 @@ const getClassRoutine = async (req, res) => {
 
     // If no routines found
     if (routines.length === 0) {
-      return res.status(404).json({ message: "No class routines found" });
+      return res.status(404).json({ success: false, message: "No class routines found" });
     }
 
-    // Return the fetched routines
-    return res.status(200).json(routines);
+    // Return the fetched routines with a well-structured response
+    return res.status(200).json({
+      success: true,
+      message: "Class routines retrieved successfully",
+      routines: routines
+    });
   } catch (error) {
     console.error("Error fetching class routines:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }
 };
+
 
 // Controller to add a new assignment
 const addAssignment = async (req, res) => {
@@ -2540,7 +2689,7 @@ const getAllMarks = asyncHandler(async (req, res) => {
       // Determine pass/fail status
       const status = percentage >= 40 ? "Pass" : "Fail";
 
-      // Add subject details
+      // Add subject details including examType
       studentMarks[studentId].subjects.push({
         subject: mark.subject,
         marksObtained: mark.marksObtained,
@@ -2548,6 +2697,7 @@ const getAllMarks = asyncHandler(async (req, res) => {
         percentage: percentage.toFixed(2),
         grade,
         status,
+        examType: mark.examType, // ✅ Exam Type Added Here
       });
 
       // Update total obtained marks and total marks
@@ -2578,6 +2728,80 @@ const getAllMarks = asyncHandler(async (req, res) => {
     res.status(500).json({ message: "Failed to retrieve marks" });
   }
 });
+
+const getClassSectionTopper = asyncHandler(async (req, res) => {
+  const { class: classFilter, section } = req.query; // Extract class and section from query params
+
+  try {
+    // Step 1: Retrieve all marks and populate student details
+    const marks = await Marks.find().populate(
+      "studentId",
+      "firstName lastName class roll section fatherName motherName"
+    );
+
+    // Filter marks based on class and section
+    const filteredMarks = marks.filter(
+      (mark) =>
+        mark.studentId?.class === classFilter &&
+        mark.studentId?.section === section
+    );
+
+    if (!filteredMarks || filteredMarks.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No marks found for this class and section" });
+    }
+
+    // Step 2: Group marks by students and calculate totals
+    const studentMarks = {};
+
+    filteredMarks.forEach((mark) => {
+      const studentId = mark.studentId?._id?.toString() || mark.studentId || "Unknown";
+
+      if (!studentMarks[studentId]) {
+        studentMarks[studentId] = {
+          student: mark.studentId || { firstName: "N/A", lastName: "N/A" },
+          totalObtainedMarks: 0,
+          totalMarks: 0,
+        };
+      }
+
+      // Update total obtained marks and total marks
+      studentMarks[studentId].totalObtainedMarks += mark.marksObtained;
+      studentMarks[studentId].totalMarks += mark.totalMarks;
+    });
+
+    // Step 3: Find the student with the highest total obtained marks
+    let topper = null;
+
+    Object.values(studentMarks).forEach((student) => {
+      if (
+        !topper ||
+        student.totalObtainedMarks > topper.totalObtainedMarks
+      ) {
+        topper = student;
+      }
+    });
+
+    // Step 4: Calculate the topper's overall percentage
+    if (topper) {
+      topper.overallPercentage = (
+        (topper.totalObtainedMarks / topper.totalMarks) *
+        100
+      ).toFixed(2);
+    }
+
+    // Step 5: Respond with the topper's details
+    res.status(200).json({
+      message: `Topper for Class ${classFilter} Section ${section} retrieved successfully`,
+      topper,
+    });
+  } catch (error) {
+    console.error("Error retrieving topper:", error);
+    res.status(500).json({ message: "Failed to retrieve topper" });
+  }
+});
+
 
 
 
@@ -2767,6 +2991,78 @@ const addFee = async (req, res) => {
   }
 };
 
+const updateFeeStatus = async (req, res) => {
+  try {
+    const { feeId, newStatus, paidAmount } = req.body;
+
+    // Check if the new status is valid
+    if (!['Paid', 'Pending', 'Overdue'].includes(newStatus)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    // Find the fee entry by its ID
+    const fee = await Fee.findById(feeId);
+    if (!fee) {
+      return res.status(404).json({ message: "Fee not found" });
+    }
+
+    // If the status is being changed from 'Pending' to 'Paid'
+    if (fee.status === 'Pending' && newStatus === 'Paid') {
+      fee.status = 'Paid';
+      fee.paidAmount = fee.amount; // Mark the full amount as paid
+      fee.pendingPayment = 0; // Set pendingPayment to 0
+    }
+    // If the new status is 'Pending' and partial payment is being made
+    else if (newStatus === 'Pending' && paidAmount) {
+      if (paidAmount > fee.pendingPayment) {
+        return res.status(400).json({ message: "Paid amount cannot exceed pending amount" });
+      }
+      fee.pendingPayment -= paidAmount; // Subtract paid amount from pending payment
+      fee.paidAmount += paidAmount; // Add paid amount to paidAmount
+
+      // If all pending payment is paid, set status to 'Paid'
+      if (fee.pendingPayment === 0) {
+        fee.status = 'Paid';
+      } else {
+        fee.status = 'Pending';
+      }
+    }
+    // If the status is not 'Paid' and partial payment is being made, keep the status as Pending
+    else if (newStatus === 'Pending') {
+      fee.status = 'Pending';
+    }
+    else {
+      fee.status = newStatus;
+    }
+
+    // Save the updated fee entry
+    const updatedFee = await fee.save();
+
+    // Update the student’s fees array (if needed)
+    const student = await Student.findById(fee.studentId);
+    if (student) {
+      // Update the student’s fee entry with the new status and pendingPayment
+      const feeIndex = student.fees.findIndex(f => f._id.toString() === feeId);
+      if (feeIndex !== -1) {
+        student.fees[feeIndex] = {
+          ...student.fees[feeIndex],
+          status: updatedFee.status,
+          pendingPayment: updatedFee.pendingPayment,
+          paidAmount: updatedFee.paidAmount,
+        };
+        await student.save();
+      }
+    }
+
+    // Return the updated fee details
+    res.status(200).json({ message: "Fee status updated successfully", fee: updatedFee });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating fee status", error: error.message });
+  }
+};
+
+
+
 
 const getFeeDetails = async (req, res) => {
   try {
@@ -2786,6 +3082,37 @@ const getFeeDetails = async (req, res) => {
 };
 
 
+// Controller to get fee details and calculate total paid and pending amount
+const getPaidAndPendingAmount = async (req, res) => {
+  try {
+    // Fetch fee details from the database
+    const fees = await Fee.find({}); // You can add filters like studentId or class if needed
+
+    // Initialize totals
+    let totalPaid = 0;
+    let totalPending = 0;
+
+    // Iterate over the fees to calculate total paid and pending
+    fees.forEach(fee => {
+      totalPaid += fee.paidAmount;
+      totalPending += fee.pendingPayment;
+    });
+
+    // Send the response with total amounts and the fee details
+    res.status(200).json({
+      message: 'Fee details fetched successfully',
+      totalPaid,
+      totalPending
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'An error occurred while fetching fee details',
+      error: error.message
+    });
+  }
+};
+
 
 // Controller to get unique classes
 const getStudentClasses = async (req, res) => {
@@ -2804,6 +3131,576 @@ const getStudentClasses = async (req, res) => {
   }
 };
 
+
+const getStudentByFilter = async (req, res) => {
+  try {
+    // Destructure 'class' (from query params) and 'section' (from query params)
+    const { class: className, section } = req.query;
+
+    // Check if the className and section are valid and sanitize input (optional)
+    const query = {};
+    if (className) query.class = className.trim();  // Use .trim() to remove any extra spaces
+    if (section) query.section = section.trim();  // Use .trim() to remove any extra spaces
+
+    // Fetch students based on class and section filter
+    const students = await Student.find(query).select('firstName lastName roll gender class section');
+
+    // Modify each student to include fullName by concatenating firstName and lastName
+    const modifiedStudents = students.map(student => ({
+      ...student.toObject(),
+      fullName: `${student.firstName} ${student.lastName}`,
+    }));
+
+    // Return success response with the list of students
+    if (modifiedStudents.length > 0) {
+      res.status(200).json({ message: 'Students fetched successfully', students: modifiedStudents });
+    } else {
+      res.status(404).json({ message: 'No students found for the given class and section.' });
+    }
+  } catch (error) {
+    // Handle errors during the fetch operation
+    res.status(500).json({ message: 'Error fetching students', error: error.message });
+  }
+};
+
+
+const promoteStudent = async (req, res) => {
+  const { studentId, newClass, section, overallPercentage, message } = req.body; // Extract fields from request body
+
+  try {
+    if (studentId) {
+      // Promote a single student by studentId
+      const updatedStudent = await Student.findByIdAndUpdate(
+        studentId,
+        {
+          class: newClass,
+          section,
+        },
+        { new: true } // Return the updated document
+      );
+
+      if (!updatedStudent) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: message || "Student promoted successfully",
+        updatedStudent,
+      });
+    } else if (overallPercentage) {
+      // Bulk promote students based on overallPercentage
+      const studentsToPromote = await Student.find({
+        overallPercentage: { $gte: overallPercentage }, // Find students with percentage greater than or equal to the specified value
+      });
+
+      if (studentsToPromote.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No students found with the specified percentage",
+        });
+      }
+
+      // Step 2: Bulk promote students by updating their class and section
+      const updatedStudents = await Student.updateMany(
+        { _id: { $in: studentsToPromote.map(student => student._id) } }, // Update the found students
+        {
+          $set: {
+            class: newClass,
+            section,
+          },
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: message || "Students promoted successfully in bulk",
+        updatedStudents,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide either studentId or overallPercentage for promotion.",
+      });
+    }
+  } catch (error) {
+    console.error("Error promoting student:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+};
+
+
+// GET: Get all holidays
+const getHolidays = async (req, res) => {
+  try {
+    const holidays = await Holiday.find();
+    res.status(200).json({ holidays });
+  } catch (error) {
+    res.status(500).json({ message: 'Error retrieving holidays', error: error.message });
+  }
+};
+
+const getAllParents = async (req, res) => {
+  try {
+    // Database se saare parents fetch karna
+    const parents = await Parent.find();
+
+    // Agar parents na mile toh empty array bhejna
+    if (!parents || parents.length === 0) {
+      return res.status(404).json({ success: false, message: "No parents found" });
+    }
+
+    // Success response with data
+    res.status(200).json({ success: true, parents });
+  } catch (error) {
+    // Error handling
+    console.error("Error fetching parents:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+const getAllLeaves = asyncHandler(async (req, res) => {
+  try {
+    // Fetching all leaves and populating student, teacher, and parent details
+    const leaves = await Leave.find()
+      .populate('studentId', 'firstName lastName class section') // Populate studentId with selected fields
+      .populate('teacherId', 'firstName lastName') // Populate teacherId with selected fields
+      .populate('parentId', 'firstName lastName contact') // Populate parentId with selected fields
+      .exec();
+
+    if (!leaves || leaves.length === 0) {
+      return res.status(404).json({ message: "No leaves found" });
+    }
+
+    // Respond with the fetched leaves
+    return res.status(200).json({
+      message: "All leaves retrieved successfully.",
+      leaves,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      message: "Error fetching leaves",
+    });
+  }
+});
+
+const updateLeaveStatus = asyncHandler(async (req, res) => {
+  const { leaveId } = req.params; // Leave ID to identify which leave to update
+  const { status } = req.body;   // Status to update (approved, rejected, etc.)
+
+  // Step 1: Validate the status value
+  const validStatuses = ['Approved', 'Rejected', 'Pending']; // You can add other status values here
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ message: "Invalid status value" });
+  }
+
+  // Step 2: Find the leave by ID
+  const leave = await Leave.findById(leaveId);
+
+  if (!leave) {
+    return res.status(404).json({ message: "Leave not found" });
+  }
+
+  // Step 3: Update the leave status
+  leave.status = status;
+
+  // Step 4: Save the updated leave
+  await leave.save();
+
+  // Step 5: Return the updated leave information
+  return res.status(200).json({
+    message: `Leave status updated to ${status}`,
+    leave,
+  });
+});
+
+
+// Controller to get all complaints and expand student details
+const getAllComplaints = async (req, res) => {
+  try {
+    // Fetching all complaints and populating student details
+    const complaints = await ComplaintModel.find()
+      .populate('studentId', 'firstName lastName class section roll') // Populate studentId with selected fields
+      .exec();
+
+    // Respond with the fetched complaints
+    res.status(200).json({
+      success: true,
+      complaints,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch complaints. Please try again later.",
+    });
+  }
+};
+
+
+const createMeeting = async (req, res) => {
+  try {
+    const { date, time, agenda, location } = req.body;
+
+    // Create a new meeting with no teacher-specific IDs
+    const meeting = new Meeting({
+      date,
+      time,
+      agenda,
+      location,
+    });
+
+    await meeting.save();
+
+    // Push the meeting ID to the meetings[] array of all teachers
+    await Teacher.updateMany(
+      {}, // Apply the update to all teachers
+      { $push: { meetings: meeting._id } } // Push the meeting ID into each teacher's meetings array
+    );
+
+    return res.status(201).json({
+      message: "Meeting created successfully",
+      meeting
+    });
+
+  } catch (error) {
+    console.error("Error creating meeting:", error);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};
+
+
+const getAllMeetings = async (req, res) => {
+  try {
+    // Fetch all meetings from the database
+    const meetings = await Meeting.find();
+
+    if (meetings.length === 0) {
+      return res.status(404).json({ message: "No meetings found" });
+    }
+
+    return res.status(200).json({
+      message: "Meetings fetched successfully",
+      meetings
+    });
+  } catch (error) {
+    console.error("Error fetching meetings:", error);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};
+
+const getAllStudentLeaves = asyncHandler(async (req, res) => {
+  // Step 1: Retrieve all students
+  const students = await Student.find();
+
+  if (!students || students.length === 0) {
+    return res.status(404).json({ message: "No students found" });
+  }
+
+  // Step 2: Extract the leave data, class, and section from each student
+  const allLeaves = students.map(student => ({
+    studentId: student._id,
+    studentName: `${student.firstName} ${student.lastName}`,
+    class: student.class,        // Assuming class is stored as 'class'
+    section: student.section,    // Assuming section is stored as 'section'
+    leaves: student.leaves,      // Extracting leave data
+  }));
+
+  // Step 3: Respond with the leave data including class and section
+  res.status(200).json({
+    message: "All leaves retrieved successfully",
+    allLeaves,
+  });
+});
+
+const updateStudentLeaveStatus = asyncHandler(async (req, res) => {
+  const { studentId, leaveId } = req.params;
+  const { status } = req.body;  // Only expecting 'status' in the request body
+
+  // Step 1: Find the student by ID
+  const student = await Student.findById(studentId);
+
+  if (!student) {
+    return res.status(404).json({ message: "Student not found" });
+  }
+
+  // Step 2: Find the leave by leaveId
+  const leave = student.leaves.id(leaveId);
+
+  if (!leave) {
+    return res.status(404).json({ message: "Leave not found" });
+  }
+
+  // Step 3: Update the leave status
+  if (status) {
+    leave.status = status;
+  }
+
+  // Save the updated student document
+  await student.save();
+
+  // Step 4: Respond with the updated leave data
+  res.status(200).json({
+    message: "Leave status updated successfully",
+    leave: {
+      leaveId: leave._id,  // Include leaveId
+      studentId: student._id, // Include studentId
+      status: leave.status,
+    },
+  });
+});
+
+const updateTeacherLeaveStatus = asyncHandler(async (req, res) => {
+  const { teacherId, leaveId } = req.params;
+  const { status } = req.body;  // Only expecting 'status' in the request body
+
+  // Step 1: Find the student by ID
+  const student = await Teacher.findById(teacherId);
+
+  if (!student) {
+    return res.status(404).json({ message: "Student not found" });
+  }
+
+  // Step 2: Find the leave by leaveId
+  const leave = student.leaves.id(leaveId);
+
+  if (!leave) {
+    return res.status(404).json({ message: "Leave not found" });
+  }
+
+  // Step 3: Update the leave status
+  if (status) {
+    leave.status = status;
+  }
+
+  // Save the updated student document
+  await student.save();
+
+  // Step 4: Respond with the updated leave data
+  res.status(200).json({
+    message: "Leave status updated successfully",
+    leave: {
+      leaveId: leave._id,  // Include leaveId
+      teacherId: student._id, // Include studentId
+      status: leave.status,
+    },
+  });
+});
+
+
+
+
+const getAllTeachersWithLeaves = asyncHandler(async (req, res) => {
+  try {
+    // Find all teachers where the 'leaves' array is not empty
+    const teachers = await Teacher.find({ "leaves.0": { $exists: true } });
+
+    if (!teachers.length) {
+      return res.status(404).json({ message: "No teachers found with leaves" });
+    }
+
+    // For each teacher, populate the leave details
+    const teacherLeaves = [];
+
+    for (const teacher of teachers) {
+      const leaveIds = teacher.leaves.map(leave => leave._id);
+      const leaves = await Leave.find({ _id: { $in: leaveIds } });
+
+      // Format the leave data for each teacher
+      const leaveData = leaves.map((leave) => ({
+        leaveId: leave._id,
+        startDate: leave.startDate,
+        endDate: leave.endDate,
+        reason: leave.reason,
+        leaveType: leave.leaveType, // Assuming leaveType exists in the Leave model
+        status: leave.status
+      }));
+
+      teacherLeaves.push({
+        teacherName: teacher.name,  // Assuming teacher has 'name' field
+        teacherId: teacher._id,
+        leaves: leaveData
+      });
+    }
+
+    // Send the teacher and leave data as response
+    res.status(200).json({
+      message: "Teachers with leaves fetched successfully",
+      teachers: teacherLeaves,
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+
+ const scheduleMeetingWithTeacher = async (req, res) => {
+  try {
+    const { teacherName, date, time, link } = req.body;
+
+    if (!date || !time || !link) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    let meetingDetails = { date, time, link };
+
+    // 1️⃣ Single Teacher ke sath meeting (agar `teacherName` diya ho)
+    if (teacherName) {
+      const teacher = await Teacher.findOne({ name: teacherName });
+
+      if (!teacher) {
+        return res.status(404).json({ message: "Teacher not found" });
+      }
+
+      const meeting = new Meeting(meetingDetails);
+      await meeting.save();
+
+      // Teacher ke `mymeeting[]` array me push karna
+      teacher.mymeeting.push(meeting._id);
+      await teacher.save();
+
+      return res.status(201).json({ message: `Meeting scheduled with ${teacherName}`, meeting });
+    }
+
+    // 2️⃣ Sabhi Teachers ke sath meeting
+    const teachers = await Teacher.find();
+    
+    if (!teachers.length) {
+      return res.status(404).json({ message: "No teachers found" });
+    }
+
+    const meeting = new Meeting(meetingDetails);
+    await meeting.save();
+
+    // Sabhi teachers ke `mymeeting[]` array me push karna
+    await Promise.all(
+      teachers.map(async (teacher) => {
+        teacher.mymeeting.push(meeting._id);
+        await teacher.save();
+      })
+    );
+
+    return res.status(201).json({ message: "Meeting scheduled with all teachers", meeting });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+ const getAllTeachersMeetings = async (req, res) => {
+  try {
+    // Sabhi teachers ki `name` aur `mymeeting[]` ko fetch karenge aur meetings ko populate karenge
+    const teachers = await Teacher.find()
+      .select("name mymeeting")  // `name` aur `mymeeting[]` ko select karenge
+      .populate("mymeeting");    // Meetings ki details expand karenge
+
+    if (!teachers.length) {
+      return res.status(404).json({ message: "No teachers found" });
+    }
+
+    // Sabhi teachers ki `name` aur unke `mymeeting[]` ko return karenge
+    const meetings = teachers.map(teacher => ({
+      name: teacher.name,
+      mymeeting: teacher.mymeeting
+    }));
+
+    return res.status(200).json({ meetings });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+ const getAllStudentsMeetings = async (req, res) => {
+  try {
+    // Sabhi students ki meetings fetch karo aur meetings ko populate karo
+    const students = await Student.find()
+      .populate("meetings");  // Meetings ki details expand karenge
+
+    if (!students.length) {
+      return res.status(404).json({ message: "No students found" });
+    }
+
+    // Sabhi students ke meetings ko return karenge
+    const studentsMeetings = students.map(student => ({
+      name: student.name,
+      class: student.class,
+      section: student.section,
+      meetings: student.meetings
+    }));
+
+    return res.status(200).json({ studentsMeetings });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+const getDashboardCounts = async (req, res) => {
+  try {
+    // Fetch counts for total students, parents, teachers, subjects, classes, holidays, meetings
+    const totalStudents = await Student.countDocuments();
+    const totalParents = await Parent.countDocuments();
+    const totalTeachers = await Teacher.countDocuments();
+    const totalStaffs = await Staff.countDocuments();
+    const totalSubjects = await Subject.countDocuments();
+    const totalClasses = await Class.countDocuments();
+    const totalHolidays = await Holiday.countDocuments();
+    const totalMeetings = await Meeting.countDocuments();
+    const totalRoutines = await Routine.countDocuments();
+
+
+    // Fetch fee details from the database
+    const fees = await Fee.find({}); // You can add filters like studentId or class if needed
+
+    // Initialize totals for paid, pending, and total fee amounts
+    let totalPaid = 0;
+    let totalPending = 0;
+    let totalAmount = 0;
+
+    // Iterate over the fees to calculate total paid, pending, and total fee amounts
+    fees.forEach(fee => {
+      totalPaid += fee.paidAmount;
+      totalPending += fee.pendingPayment;
+      totalAmount += fee.paidAmount + fee.pendingPayment; // Sum of paid and pending to get total amount
+    });
+
+    // Format numbers with commas before returning them
+    const formatNumber = (number) => {
+      return number.toLocaleString();
+    };
+
+    // Return all the totals and fee details in a single response
+    res.status(200).json({
+      totalStudents,
+      totalParents,
+      totalTeachers,
+      totalStaffs,
+      totalSubjects,
+      totalClasses,
+      totalHolidays,
+      totalMeetings,
+      totalRoutines,
+      totalPaid: formatNumber(totalPaid),
+      totalPending: formatNumber(totalPending),
+      totalAmount: formatNumber(totalAmount) // Total amount including both paid and pending
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving dashboard data', error: error.message });
+  }
+};
 
 
 export {
@@ -2905,5 +3802,26 @@ export {
   addFee,
   getFeeDetails,
   getStudentByFilter,
-  getStudentClasses
+  getStudentClasses,
+  promoteStudent,
+  getClassSectionTopper,
+  addHoliday,
+  getHolidays,
+  getAllParents,
+  getAllLeaves,
+  updateLeaveStatus,
+  updateFeeStatus,
+  getPaidAndPendingAmount,
+  getAllComplaints,
+  createMeeting,
+  getAllMeetings,
+  getAllStudentLeaves,
+  updateStudentLeaveStatus,
+  getAllTeachersWithLeaves,
+  updateTeacherLeaveStatus,
+  getStudentDetails,
+  scheduleMeetingWithTeacher,
+  getAllTeachersMeetings,
+  getAllStudentsMeetings,
+  getDashboardCounts
 }

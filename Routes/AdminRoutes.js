@@ -82,8 +82,29 @@ import {
   createSchool,
   addFee,
   getStudentByFilter,
-  getStudentClasses,
-  getFeeDetails
+  getFeeDetails,
+  promoteStudent,
+  getClassSectionTopper,
+  addHoliday,
+  getHolidays,
+  getAllParents,
+  getExamTypes,
+  getAllLeaves,
+  updateLeaveStatus,
+  updateFeeStatus,
+  getPaidAndPendingAmount,
+  getAllComplaints,
+  createMeeting,
+  getAllMeetings,
+  getAllStudentLeaves,
+  updateStudentLeaveStatus,
+  getAllTeachersWithLeaves,
+  updateTeacherLeaveStatus,
+  getStudentDetails,
+  scheduleMeetingWithTeacher,
+  getAllTeachersMeetings,
+  getAllStudentsMeetings,
+  getDashboardCounts
 } from '../Controller/AdminController.js'
 
 // Configure multer for file uploads
@@ -113,7 +134,7 @@ router.delete('/delete-section/:id', deleteSection); // Delete section
 router.put('/update-section/:id', updateSection); // Update section
 router.get('/get-section', getSections);
 router.post('/assign-teacher', assignClassTeacher);
-router.get('/get-teacher', getClassTeachers);
+router.get('/get-assign-teacher', getClassTeachers);
 router.post('/assign-subject', assignSubjectTeacher);
 router.get('/get-assign-subject', getSubjectAssignments);
 router.post('/add-classroom', addClassroom);
@@ -127,6 +148,7 @@ router.post('/add-category', addStudentCategory);
 router.get('/get-category', getStudentCategories);
 router.post('/add-student', addStudent);
 router.get('/get-student', getStudentsAdmission);
+router.get('/get-studentdetails/:studentId', getStudentDetails);
 router.get('/get-attendance', getAttendance);
 router.post('/add-fees-group', addFeesGroup);
 router.get('/get-fees-group', getFeesGroups);
@@ -147,6 +169,7 @@ router.post('/add-homework',upload.single('file'), addHomework); // Middleware f
 router.get('/homeworks', getAllHomework);
 router.post('/assign-vehicle', assignVehicle);
 router.post('/examtype', addExamType);
+router.get('/get-examtype', getExamTypes);
 router.post('/add-exam-schedule', addExamSchedule);
 router.get('/get-exam-schedule', getExamSchedule);
 router.post("/create-seat", createSeatPlan); // Create seat plan
@@ -179,8 +202,27 @@ router.get('/staffs', getAllStaff);
 router.post('/schools', createSchool);
 router.post('/add-fees', addFee);
 router.get('/fees', getFeeDetails);
+router.put('/update-fee', updateFeeStatus);
 router.get('/get-students', getStudentByFilter);
-router.get('/get-classes', getStudentClasses);
+router.put("/promote", promoteStudent);
+router.get("/topper", getClassSectionTopper);
+router.post('/add-holidays', addHoliday);
+router.get('/holidays', getHolidays);
+router.get('/parents', getAllParents);
+router.get('/leaves', getAllLeaves);
+router.get('/totalamount', getPaidAndPendingAmount);
+router.get('/complaint', getAllComplaints);
+router.put('/approve-leave/:leaveId', updateLeaveStatus);
+router.post('/create-meeting', createMeeting);
+router.get('/meetings', getAllMeetings);
+router.get('/student-leaves', getAllStudentLeaves);
+router.get('/teacher-leaves', getAllTeachersWithLeaves);
+router.put('/student-leaveupdate/:studentId/:leaveId', updateStudentLeaveStatus);
+router.put('/teacher-leaveupdate/:teacherId/:leaveId', updateTeacherLeaveStatus);
+router.post('/teacher-meeting', scheduleMeetingWithTeacher);
+router.get('/teacher-meeting', getAllTeachersMeetings);
+router.get('/teacher-student', getAllStudentsMeetings);
+router.get('/get-alldashboard', getDashboardCounts);
 router.post('/settings', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'schoolImage', maxCount: 1 }]), updateSchoolDetails);
 
 

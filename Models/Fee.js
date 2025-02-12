@@ -7,7 +7,7 @@ const feeSchema = new mongoose.Schema({
   },
   feesType: {
     type: String,
-    enum: ["Tuition", "Exam", "Other"], // You can extend the fee types as needed
+    enum: ["Tuition", "Exam", "Admission", "Transport", "Monthly", "Other"], // You can extend the fee types as needed
   },
   invoiceNumber: {
     type: String,
@@ -41,6 +41,7 @@ const feeSchema = new mongoose.Schema({
     },
     min: 0, // Pending payment cannot be negative
   },
+  
   }, { timestamps: true });
   
   const Fee = mongoose.model('Fee', feeSchema);

@@ -45,7 +45,31 @@ const teacherSchema = new mongoose.Schema({
       subject: { type: String },
     },
   ],
+  leaves: [
+  {
+      startDate: {
+          type: Date,
+      },
+      endDate: {
+          type: Date,
+      },
+      reason: {
+          type: String,
+      },
+      leaveType: { type: String },
+      status: {
+          type: String,
+          enum: ['Pending', 'Approved', 'Rejected'],
+          default: 'Pending',
+      },
+  },
+],
   assignedHomework: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Homework' }],
+  mymeeting: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Meeting"
+  }],
+
   role: { type: String, default: 'Teacher' }
 }, { timestamps: true });
 

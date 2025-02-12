@@ -1,9 +1,6 @@
 import mongoose from 'mongoose';
 
 const transportRouteSchema = new mongoose.Schema({
-  routeTitle: {
-    type: String,
-  },
   fare: {
     type: Number,
   },
@@ -12,10 +9,17 @@ const transportRouteSchema = new mongoose.Schema({
   pickupTime: { type: String },     
   dropTime: { type: String },       
   vehicle: { type: String },       
+  routeTitle: { type: String, }, // Route ka naam
   driver: { 
-    name: { type: String },         
-    contact: { type: String }
-  },
+    name: { type: String, }, // Driver ka naam
+    mobileNumber: { type: String, } // Driver ka mobile number
+  },  stops: [
+    {
+      stopName: { type: String, }, // Stop ka naam
+      arrivalTime: { type: String, } // Stop pe bus kitne baje aayegi
+    }
+  ],
+  date: { type: Date, } // Route ka date
 }, { timestamps: true });
 
 const Transport = mongoose.model('Transport', transportRouteSchema);
