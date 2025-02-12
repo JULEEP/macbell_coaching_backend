@@ -3702,6 +3702,52 @@ const getDashboardCounts = async (req, res) => {
   }
 };
 
+const createLecture = async (req, res) => {
+  try {
+      const { title, description, subject, category, class: className, section } = req.body;
+      
+      const newLecture = new Lecture({
+          title,
+          description,
+          subject,
+          category,
+          className,
+          section
+      });
+
+      const savedLecture = await newLecture.save();
+      res.status(201).json(savedLecture);
+  } catch (error) {
+      res.status(500).json({ message: "Server Error", error: error.message });
+  }
+
+};
+
+const getAllLectures = async (req, res) => {
+  try {
+    const lectures = await Lecture.find();
+    res.status(200).json(lectures);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+const deleteLecture = async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    
+    const deletedLecture = await Lecture.findByIdAndDelete(lectureId);
+    
+    if (!deletedLecture) {
+      return res.status(404).json({ message: "Lecture not found" });
+    }
+
+    res.status(200).json({ message: "Lecture deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
 
 export {
   adminRegistration,
@@ -3823,5 +3869,8 @@ export {
   scheduleMeetingWithTeacher,
   getAllTeachersMeetings,
   getAllStudentsMeetings,
-  getDashboardCounts
+  getDashboardCounts,
+  createLecture,
+  getAllLectures,
+  deleteLecture
 }

@@ -104,7 +104,11 @@ import {
   scheduleMeetingWithTeacher,
   getAllTeachersMeetings,
   getAllStudentsMeetings,
-  getDashboardCounts
+  getDashboardCounts,
+  createLecture,
+  getAllLectures,
+  deleteLecture
+
 } from '../Controller/AdminController.js'
 
 // Configure multer for file uploads
@@ -223,6 +227,9 @@ router.post('/teacher-meeting', scheduleMeetingWithTeacher);
 router.get('/teacher-meeting', getAllTeachersMeetings);
 router.get('/teacher-student', getAllStudentsMeetings);
 router.get('/get-alldashboard', getDashboardCounts);
+router.post('/create-lecture', createLecture);
+router.get('/create-lecture', getAllLectures);
+router.get('/create-lecture', deleteLecture);
 router.post('/settings', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'schoolImage', maxCount: 1 }]), updateSchoolDetails);
 
 
